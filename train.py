@@ -5,7 +5,7 @@ from data_loader import load_data
 import torch
 import torch.nn as nn
 
-from model import GCN
+from model import GCN, MyGAT
 # from model import YourGNNModel # Build your model in model.py
     
 import os
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     """TODO: build your own model in model.py and replace GCN() with your model"""
     in_size = features.shape[1]
     out_size = num_classes
-    model = GCN(in_size, 16, out_size).to(device)
+    model = MyGAT(in_size, 16, out_size).to(device)
     
     # model training
     print("Training...")
