@@ -4,13 +4,23 @@ from data_loader import load_data
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import optuna
 
-from model import GCN, MyGAT
+from gat import GAT
+
 # from model import YourGNNModel # Build your model in model.py
-    
+
 import os
 import warnings
+
+from gatv2 import GATv2
+from gcn_three_layer import GCN_THREE
+from sage import SAGE
+from sage_mean import SAGE_MEAN
+
 warnings.filterwarnings("ignore")
+
 
 def evaluate(g, features, labels, mask, model):
     """Evaluate model accuracy"""
@@ -22,8 +32,19 @@ def evaluate(g, features, labels, mask, model):
         correct = torch.sum(indices == labels)
         return correct.item() * 1.0 / len(labels)
 
-def train(g, features, train_labels, val_labels, train_mask, val_mask, model, epochs, es_iters=None):
-    
+
+def train(
+    g,
+    features,
+    train_labels,
+    val_labels,
+    train_mask,
+    val_mask,
+    model,
+    epochs,
+    es_iters=None,
+):
+
     # define train/val samples, loss function and optimizer
     loss_fcn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-2, weight_decay=5e-4)
@@ -63,13 +84,15 @@ def train(g, features, train_labels, val_labels, train_mask, val_mask, model, ep
                 break
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     parser = ArgumentParser()
     # you can add your arguments if needed
-    parser.add_argument('--epochs', type=int, default=300)
-    parser.add_argument('--es_iters', type=int, help='num of iters to trigger early stopping')
-    parser.add_argument('--use_gpu', action='store_true')
+    parser.add_argument("--epochs", type=int, default=300)
+    parser.add_argument(
+        "--es_iters", type=int, help="num of iters to trigger early stopping"
+    )
+    parser.add_argument("--use_gpu", action="store_true")
     args = parser.parse_args()
 
     if args.use_gpu:
@@ -78,41 +101,75 @@ if __name__ == '__main__':
         device = torch.device("cpu")
 
     # Load data
-    features, graph, num_classes, \
-    train_labels, val_labels, test_labels, \
-    train_mask, val_mask, test_mask = load_data()
-    
+    (
+        features,
+        graph,
+        num_classes,
+        train_labels,
+        val_labels,
+        test_labels,
+        train_mask,
+        val_mask,
+        test_mask,
+    ) = load_data()
+
     train_mask = torch.tensor(train_mask).to(device)
     train_labels = torch.tensor(train_labels).to(device)
     val_mask = torch.tensor(val_mask).to(device)
     val_labels = torch.tensor(val_labels).to(device)
     test_mask = torch.tensor(test_mask).to(device)
-    test_labels = torch.tensor(test_labels).to(device)    
+    test_labels = torch.tensor(test_labels).to(device)
     graph = graph.to(device)
     features = features.to(device)
-
 
     # Initialize the model (Baseline Model: GCN)
     """TODO: build your own model in model.py and replace GCN() with your model"""
     in_size = features.shape[1]
     out_size = num_classes
-    model = MyGAT(in_size, 16, out_size).to(device)
+    #model = GAT(in_size, 16, out_size, [16, 1]).to(device)
+    num_layers = 2
+    num_heads = 16
+    num_hidden = 16
+    num_out_heads = 1
+    heads = ([num_heads] * num_layers) + [num_out_heads]
+    model = SAGE(in_size, 16, out_size)
+    def objective(trial):
+        hid_size = trial.suggest_int('hid_size', 4, 32)
+        dropout = trial.suggest_float(f'dropout', 0, 1)
+        model = SAGE(in_size, hid_size, out_size, dropout)
+
+        # model training
+        print("Training...")
+        train(
+            graph,
+            features,
+            train_labels,
+            val_labels,
+            train_mask,
+            val_mask,
+            model,
+            args.epochs,
+            args.es_iters,
+        )
+
+        print("Testing...")
+        acc = evaluate(graph, features, val_labels, val_mask, model)
+        print("Test accuracy {:.4f}".format(acc))
+        return acc
     
-    # model training
-    print("Training...")
-    train(graph, features, train_labels, val_labels, train_mask, val_mask, model, args.epochs, args.es_iters)
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=100)
     
-    print("Testing...")
     model.eval()
     with torch.no_grad():
         logits = model(graph, features)
         logits = logits[test_mask]
         _, indices = torch.max(logits, dim=1)
-    
+
     # Export predictions as csv file
     print("Export predictions as csv file.")
-    with open('output.csv', 'w') as f:
-        f.write('ID,Predict\n')
+    with open("output.csv", "w") as f:
+        f.write("ID,Predict\n")
         for idx, pred in enumerate(indices):
-            f.write(f'{idx},{int(pred)}\n')
+            f.write(f"{idx},{int(pred)}\n")
     # Please remember to upload your output.csv file to Kaggle for scoring
