@@ -1,10 +1,12 @@
 from argparse import ArgumentParser
 
+from appnp import APPNP
 from data_loader import load_data
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from gatv2_conv_DGL import GATv2Conv
 import optuna
 
 from gat import GAT
@@ -59,18 +61,18 @@ def train(
     for epoch in range(epochs):
         model.train()
         logits = model(g, features)
-        loss = loss_fcn(logits[train_mask], train_labels)
+        loss = loss_fcn(logits[train_mask + val_mask], torch.cat((train_labels, val_labels), 0))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        acc = evaluate(g, features, val_labels, val_mask, model)
-        print(
-            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} ".format(
-                epoch, loss.item(), acc
-            )
-        )
-        
+        # acc = evaluate(g, features, val_labels, val_mask, model)
+        # print(
+        #    "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} ".format(
+        #        epoch, loss.item(), acc
+        #    )
+        # )
+
         val_loss = loss_fcn(logits[val_mask], val_labels).item()
         if es_iters:
             if val_loss < loss_min:
@@ -120,26 +122,38 @@ if __name__ == "__main__":
     test_mask = torch.tensor(test_mask).to(device)
     test_labels = torch.tensor(test_labels).to(device)
     graph = graph.to(device)
-    features = features.to(device)
+    features = features.to(device)  
 
     # Initialize the model (Baseline Model: GCN)
     """TODO: build your own model in model.py and replace GCN() with your model"""
     in_size = features.shape[1]
     out_size = num_classes
-    #model = GAT(in_size, 16, out_size, [16, 1]).to(device)
+    # model = GAT(in_size, 16, out_size, [16, 1]).to(device)
     num_layers = 2
     num_heads = 16
     num_hidden = 16
     num_out_heads = 1
     heads = ([num_heads] * num_layers) + [num_out_heads]
-    model = SAGE(in_size, 16, out_size)
-    def objective(trial):
+    model = SAGE(in_size, 24, out_size)
+    train(
+        graph,
+        features,
+        train_labels,
+        val_labels,
+        train_mask,
+        val_mask,
+        model,
+        args.epochs,
+        args.es_iters,
+    )
+    '''def objective(trial):
         hid_size = trial.suggest_int('hid_size', 4, 32)
-        dropout = trial.suggest_float(f'dropout', 0, 1)
-        model = SAGE(in_size, hid_size, out_size, dropout)
+        #dropout = trial.suggest_float(f'dropout', 0, 1)
+        #aggregator_type = trial.suggest_int(f'aggregator_type', 0, 3)
+        model = SAGE(in_size, hid_size, out_size, .3, 2, 0)
 
         # model training
-        print("Training...")
+        #print("Training...")
         train(
             graph,
             features,
@@ -152,14 +166,19 @@ if __name__ == "__main__":
             args.es_iters,
         )
 
-        print("Testing...")
+        #print("Testing...")
         acc = evaluate(graph, features, val_labels, val_mask, model)
         print("Test accuracy {:.4f}".format(acc))
         return acc
     
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=100)
-    
+    study.optimize(objective, n_trials=100)'''
+
+
+    print("Testing...")
+    acc = evaluate(graph, features, val_labels, val_mask, model)
+    print("Test accuracy {:.4f}".format(acc))
+        
     model.eval()
     with torch.no_grad():
         logits = model(graph, features)

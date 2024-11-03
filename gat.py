@@ -6,15 +6,35 @@ from dgl.nn.pytorch import GATConv
 class GAT(nn.Module):
     def __init__(self, in_size, hid_size, out_size, heads):
         super().__init__()
+        self.gat_layers = nn.ModuleList()
         # two-layer GAT
-        self.conv1 = GATConv(in_size, hid_size, heads[0])
-        self.conv2 = GATConv(hid_size * heads[0], out_size, heads[1])
-        
+        self.gat_layers.append(
+            GATConv(
+                in_size,
+                hid_size,
+                heads[0],
+                feat_drop=0.6,
+                attn_drop=0.6,
+                activation=F.elu,
+            )
+        )
+        self.gat_layers.append(
+            GATConv(
+                hid_size * heads[0],
+                out_size,
+                heads[1],
+                feat_drop=0.6,
+                attn_drop=0.6,
+                activation=None,
+            )
+        )
 
-    def forward(self, g, h):
-        h = F.dropout(h, p=0.6, training=self.training)
-        h = self.conv1(g, h)
-        h = F.elu(h)
-        h = F.dropout(h, p=0.6, training=self.training)
-        h = self.conv2(g, h)
+    def forward(self, g, inputs):
+        h = inputs
+        for i, layer in enumerate(self.gat_layers):
+            h = layer(g, h)
+            if i == len(self.gat_layers) - 1:  # last layer
+                h = h.mean(1)
+            else:  # other layer(s)
+                h = h.flatten(1)
         return h
