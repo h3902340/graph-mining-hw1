@@ -243,14 +243,18 @@ if __name__ == "__main__":
         for idx, pred in enumerate(indices_sage):
             if pred != indices_gcn[idx] and pred != indices_gat[idx] and indices_gcn[idx] != indices_gat[idx]:
                 all_different = all_different + 1
-            if pred != indices_gcn[idx] and pred == indices_gat[idx]:
+                f.write(f"{idx},{1}\n")
+            elif pred != indices_gcn[idx] and pred == indices_gat[idx]:
                 one_different = one_different + 1
-            if pred != indices_gat[idx] and pred == indices_gcn[idx]:
+                f.write(f"{idx},{int(pred)}\n")
+            elif pred != indices_gat[idx] and pred == indices_gcn[idx]:
                 one_different = one_different + 1
-            if indices_gcn[idx] != pred and indices_gcn[idx] == indices_gat[idx]:
+                f.write(f"{idx},{int(pred)}\n")
+            elif indices_gcn[idx] != pred and indices_gcn[idx] == indices_gat[idx]:
                 one_different = one_different + 1
-            pred_mix = torch.round((pred * .79 + indices_gcn[idx] * .76 + indices_gat[idx] * .76)/(.79 + .76 + .76))
-            f.write(f"{idx},{int(pred)}\n")
+                f.write(f"{idx},{int(indices_gcn[idx])}\n")
+            else:
+                f.write(f"{idx},{int(pred)}\n")
         print(f"all_different: {all_different}")
         print(f"one_different: {one_different}")
     # Please remember to upload your output.csv file to Kaggle for scoring
