@@ -145,7 +145,13 @@ if __name__ == "__main__":
         
     features = torch.cat((features, one_hot), 1)
     
-    print(features.shape)
+    for i in range(60):
+        if not train_mask[i]:
+            print(f"train_mask wrong! i={i}")
+            
+    for i in range(60, 90):
+        if not val_mask[i]:
+            print(f"val_mask wrong! i={i}")
 
     # Initialize the model (Baseline Model: GCN)
     """TODO: build your own model in model.py and replace GCN() with your model"""
@@ -157,7 +163,8 @@ if __name__ == "__main__":
     num_hidden = 16
     num_out_heads = 1
     heads = ([num_heads] * num_layers) + [num_out_heads]
-    model = SAGE(in_size, 24, out_size)
+    
+    model_sage = SAGE(in_size, 24, out_size)
     train(
         graph,
         features,
@@ -165,10 +172,37 @@ if __name__ == "__main__":
         val_labels,
         train_mask,
         val_mask,
-        model,
+        model_sage,
         args.epochs,
         args.es_iters,
     )
+    
+    model_gcn = GCN(in_size, 24, out_size)
+    train(
+        graph,
+        features,
+        train_labels,
+        val_labels,
+        train_mask,
+        val_mask,
+        model_gcn,
+        args.epochs,
+        args.es_iters,
+    )
+    
+    model_gat = GAT(in_size, 24, out_size, [2, 2])
+    train(
+        graph,
+        features,
+        train_labels,
+        val_labels,
+        train_mask,
+        val_mask,
+        model_gat,
+        args.epochs,
+        args.es_iters,
+    )
+    
     '''def objective(trial):
         hid_size = trial.suggest_int('hid_size', 4, 32)
         #dropout = trial.suggest_float(f'dropout', 0, 1)
@@ -199,19 +233,48 @@ if __name__ == "__main__":
 
 
     print("Testing...")
-    acc = evaluate(graph, features, val_labels, val_mask, model)
-    print("Test accuracy {:.4f}".format(acc))
+    acc = evaluate(graph, features, val_labels, val_mask, model_sage)
+    print("SAGE accuracy {:.4f}".format(acc))
+    acc = evaluate(graph, features, val_labels, val_mask, model_gcn)
+    print("GCN accuracy {:.4f}".format(acc))
+    acc = evaluate(graph, features, val_labels, val_mask, model_gat)
+    print("GAT accuracy {:.4f}".format(acc))
         
-    model.eval()
+    model_sage.eval()
     with torch.no_grad():
-        logits = model(graph, features)
+        logits = model_sage(graph, features)
         logits = logits[test_mask]
-        _, indices = torch.max(logits, dim=1)
+        _, indices_sage = torch.max(logits, dim=1)
+        
+    model_gcn.eval()
+    with torch.no_grad():
+        logits = model_gcn(graph, features)
+        logits = logits[test_mask]
+        _, indices_gcn = torch.max(logits, dim=1)
+        
+    model_gat.eval()
+    with torch.no_grad():
+        logits = model_gat(graph, features)
+        logits = logits[test_mask]
+        _, indices_gat = torch.max(logits, dim=1)
 
     # Export predictions as csv file
     print("Export predictions as csv file.")
     with open("output.csv", "w") as f:
         f.write("ID,Predict\n")
-        for idx, pred in enumerate(indices):
+        all_different = 0
+        one_different = 0
+        for idx, pred in enumerate(indices_sage):
+            if pred != indices_gcn[idx] and pred != indices_gat[idx] and indices_gcn[idx] != indices_gat[idx]:
+                all_different = all_different + 1
+            if pred != indices_gcn[idx] and pred == indices_gat[idx]:
+                one_different = one_different + 1
+            if pred != indices_gat[idx] and pred == indices_gcn[idx]:
+                one_different = one_different + 1
+            if indices_gcn[idx] != pred and indices_gcn[idx] == indices_gat[idx]:
+                one_different = one_different + 1
+            pred_mix = torch.round((pred * .79 + indices_gcn[idx] * .76 + indices_gat[idx] * .76)/(.79 + .76 + .76))
             f.write(f"{idx},{int(pred)}\n")
+        print(f"all_different: {all_different}")
+        print(f"one_different: {one_different}")
     # Please remember to upload your output.csv file to Kaggle for scoring

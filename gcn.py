@@ -16,12 +16,23 @@ class GCN(nn.Module):
         # two-layer GCN
         self.layers.append(GraphConv(in_size, hid_size, activation=F.relu))
         self.layers.append(GraphConv(hid_size, out_size))
-        self.dropout = nn.Dropout(0.5)
+        self.input_drop = nn.Dropout(0.25)
+        self.dropout = nn.Dropout(0.75)
+        self.linears = nn.ModuleList()
+        self.linears.append(nn.Linear(in_size, hid_size))
+        self.linears.append(nn.Linear(hid_size, out_size))
+        self.bn = nn.BatchNorm1d(hid_size)
 
     def forward(self, g, features):
         h = features
+        h = self.input_drop(h)
         for i, layer in enumerate(self.layers):
-            if i != 0:
+            conv = layer(g, h)
+            linear = self.linears[i](h)
+            h = conv + linear
+            is_last_layer = i == len(self.layers) - 1
+            if not is_last_layer:
+                h = self.bn(h)
+                h = F.relu(h)
                 h = self.dropout(h)
-            h = layer(g, h)
         return h
