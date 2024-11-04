@@ -128,15 +128,6 @@ if __name__ == "__main__":
     graph = graph.to(device)
     features = features.to(device)
     
-    '''options = {
-    'node_color': 'black',
-    'node_size': 20,
-    'width': 1,
-    }
-    G = dgl.to_networkx(graph)
-    plt.figure(figsize=[15,7])
-    nx.draw(G, **options)'''
-    
     one_hot = torch.zeros([features.shape[0], num_classes], dtype=torch.int, device=device)
     for i in range(60):
         one_hot[i][train_labels[i]] = 1
@@ -144,26 +135,11 @@ if __name__ == "__main__":
         one_hot[i][val_labels[i - 60]] = 1
         
     features = torch.cat((features, one_hot), 1)
-    
-    for i in range(60):
-        if not train_mask[i]:
-            print(f"train_mask wrong! i={i}")
-            
-    for i in range(60, 90):
-        if not val_mask[i]:
-            print(f"val_mask wrong! i={i}")
 
     # Initialize the model (Baseline Model: GCN)
-    """TODO: build your own model in model.py and replace GCN() with your model"""
     in_size = features.shape[1]
     out_size = num_classes
-    # model = GAT(in_size, 16, out_size, [16, 1]).to(device)
-    num_layers = 2
-    num_heads = 16
-    num_hidden = 16
-    num_out_heads = 1
-    heads = ([num_heads] * num_layers) + [num_out_heads]
-    
+        
     model_sage = SAGE(in_size, 24, out_size)
     train(
         graph,
