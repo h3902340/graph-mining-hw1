@@ -1,13 +1,18 @@
 from argparse import ArgumentParser
+import math
 
-from appnp import APPNP
 from data_loader import load_data
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from gatv2_conv_DGL import GATv2Conv
+from gcn import GCN
+from grace import Grace
 import optuna
+import dgl.data
+import matplotlib.pyplot as plt
+import networkx as nx
 
 from gat import GAT
 
@@ -33,7 +38,6 @@ def evaluate(g, features, labels, mask, model):
         _, indices = torch.max(logits, dim=1)
         correct = torch.sum(indices == labels)
         return correct.item() * 1.0 / len(labels)
-
 
 def train(
     g,
@@ -122,7 +126,26 @@ if __name__ == "__main__":
     test_mask = torch.tensor(test_mask).to(device)
     test_labels = torch.tensor(test_labels).to(device)
     graph = graph.to(device)
-    features = features.to(device)  
+    features = features.to(device)
+    
+    '''options = {
+    'node_color': 'black',
+    'node_size': 20,
+    'width': 1,
+    }
+    G = dgl.to_networkx(graph)
+    plt.figure(figsize=[15,7])
+    nx.draw(G, **options)'''
+    
+    one_hot = torch.zeros([features.shape[0], num_classes], dtype=torch.int, device=device)
+    for i in range(60):
+        one_hot[i][train_labels[i]] = 1
+    for i in range(60, 90):
+        one_hot[i][val_labels[i - 60]] = 1
+        
+    features = torch.cat((features, one_hot), 1)
+    
+    print(features.shape)
 
     # Initialize the model (Baseline Model: GCN)
     """TODO: build your own model in model.py and replace GCN() with your model"""

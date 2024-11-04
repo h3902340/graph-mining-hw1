@@ -15,8 +15,8 @@ class GATv2(nn.Module):
         activation,
         feat_drop,
         attn_drop,
-        negative_slope,
-        residual,
+        negative_slope=.2,
+        residual=False,
     ):
         super(GATv2, self).__init__()
         self.num_layers = num_layers
@@ -33,7 +33,7 @@ class GATv2(nn.Module):
                 negative_slope,
                 False,
                 self.activation,
-                bias=False,
+                bias=True,
                 share_weights=True,
             )
         )
@@ -50,7 +50,7 @@ class GATv2(nn.Module):
                     negative_slope,
                     residual,
                     self.activation,
-                    bias=False,
+                    bias=True,
                     share_weights=True,
                 )
             )
@@ -65,7 +65,7 @@ class GATv2(nn.Module):
                 negative_slope,
                 residual,
                 None,
-                bias=False,
+                bias=True,
                 share_weights=True,
             )
         )
