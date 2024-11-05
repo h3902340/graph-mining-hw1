@@ -1,18 +1,11 @@
-from argparse import ArgumentParser
 import math
-
-
-from data_loader import load_data
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-# from model import YourGNNModel # Build your model in model.py
-
 import warnings
 
+from argparse import ArgumentParser
+from data_loader import load_data
 from sage import SAGE
 
 warnings.filterwarnings("ignore")
