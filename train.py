@@ -1,30 +1,19 @@
 from argparse import ArgumentParser
 import math
 
+
 from data_loader import load_data
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from gatv2_conv_DGL import GATv2Conv
-from gcn import GCN
-from grace import Grace
-import optuna
-import dgl.data
-import matplotlib.pyplot as plt
-import networkx as nx
 
-from gat import GAT
 
 # from model import YourGNNModel # Build your model in model.py
 
-import os
 import warnings
 
-from gatv2 import GATv2
-from gcn_three_layer import GCN_THREE
 from sage import SAGE
-from sage_mean import SAGE_MEAN
 
 warnings.filterwarnings("ignore")
 
@@ -38,6 +27,13 @@ def evaluate(g, features, labels, mask, model):
         _, indices = torch.max(logits, dim=1)
         correct = torch.sum(indices == labels)
         return correct.item() * 1.0 / len(labels)
+
+epsilon = 1 - math.log(2)
+
+def compute_loss(logits, labels):
+    y = F.cross_entropy(logits, labels, reduction="none")
+    y = torch.log(epsilon + y) - math.log(epsilon)
+    return torch.mean(y)
 
 def train(
     g,
@@ -65,17 +61,18 @@ def train(
     for epoch in range(epochs):
         model.train()
         logits = model(g, features)
-        loss = loss_fcn(logits[train_mask + val_mask], torch.cat((train_labels, val_labels), 0))
+        loss = compute_loss(logits[train_mask + val_mask], torch.cat((train_labels, val_labels), 0))
+        #loss = compute_loss(logits[train_mask], train_labels)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        # acc = evaluate(g, features, val_labels, val_mask, model)
-        # print(
-        #    "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} ".format(
-        #        epoch, loss.item(), acc
-        #    )
-        # )
+        acc = evaluate(g, features, val_labels, val_mask, model)
+        print(
+            "Epoch {:05d} | Loss {:.4f} | Accuracy {:.4f} ".format(
+                epoch, loss.item(), acc
+            )
+        )
 
         val_loss = loss_fcn(logits[val_mask], val_labels).item()
         if es_iters:
@@ -127,7 +124,9 @@ if __name__ == "__main__":
     test_labels = torch.tensor(test_labels).to(device)
     graph = graph.to(device)
     features = features.to(device)
-    
+    # try to address the sparse feature issue by including the zero features as extended feature
+    features = torch.cat((features, features == 0), 1)
+
     one_hot = torch.zeros([features.shape[0], num_classes], dtype=torch.int, device=device)
     for i in range(60):
         one_hot[i][train_labels[i]] = 1
@@ -139,54 +138,14 @@ if __name__ == "__main__":
     # Initialize the model (Baseline Model: GCN)
     in_size = features.shape[1]
     out_size = num_classes
-        
-    model_sage = SAGE(in_size, 24, out_size)
-    train(
-        graph,
-        features,
-        train_labels,
-        val_labels,
-        train_mask,
-        val_mask,
-        model_sage,
-        args.epochs,
-        args.es_iters,
-    )
-    
-    model_gcn = GCN(in_size, 24, out_size)
-    train(
-        graph,
-        features,
-        train_labels,
-        val_labels,
-        train_mask,
-        val_mask,
-        model_gcn,
-        args.epochs,
-        args.es_iters,
-    )
-    
-    model_gat = GAT(in_size, 24, out_size, [2, 2])
-    train(
-        graph,
-        features,
-        train_labels,
-        val_labels,
-        train_mask,
-        val_mask,
-        model_gat,
-        args.epochs,
-        args.es_iters,
-    )
-    
-    '''def objective(trial):
-        hid_size = trial.suggest_int('hid_size', 4, 32)
-        #dropout = trial.suggest_float(f'dropout', 0, 1)
-        #aggregator_type = trial.suggest_int(f'aggregator_type', 0, 3)
-        model = SAGE(in_size, hid_size, out_size, .3, 2, 0)
 
-        # model training
-        #print("Training...")
+    model_count = 1
+    indices_matrix = torch.zeros(
+        [model_count, features.shape[0]], dtype=torch.int, device=device
+    )
+    # labels_merged = torch.cat((train_labels, val_labels), 0)
+    for i in range(model_count):
+        model_sage = SAGE(in_size, 24, out_size)
         train(
             graph,
             features,
@@ -194,67 +153,24 @@ if __name__ == "__main__":
             val_labels,
             train_mask,
             val_mask,
-            model,
+            model_sage,
             args.epochs,
             args.es_iters,
         )
+        model_sage.eval()
+        with torch.no_grad():
+            logits = model_sage(graph, features)
+            _, indices = torch.max(logits, dim=1)
+            indices_matrix[i, :] = indices
 
-        #print("Testing...")
-        acc = evaluate(graph, features, val_labels, val_mask, model)
-        print("Test accuracy {:.4f}".format(acc))
-        return acc
-    
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=100)'''
-
-
-    print("Testing...")
-    acc = evaluate(graph, features, val_labels, val_mask, model_sage)
-    print("SAGE accuracy {:.4f}".format(acc))
-    acc = evaluate(graph, features, val_labels, val_mask, model_gcn)
-    print("GCN accuracy {:.4f}".format(acc))
-    acc = evaluate(graph, features, val_labels, val_mask, model_gat)
-    print("GAT accuracy {:.4f}".format(acc))
-        
-    model_sage.eval()
-    with torch.no_grad():
-        logits = model_sage(graph, features)
-        logits = logits[test_mask]
-        _, indices_sage = torch.max(logits, dim=1)
-        
-    model_gcn.eval()
-    with torch.no_grad():
-        logits = model_gcn(graph, features)
-        logits = logits[test_mask]
-        _, indices_gcn = torch.max(logits, dim=1)
-        
-    model_gat.eval()
-    with torch.no_grad():
-        logits = model_gat(graph, features)
-        logits = logits[test_mask]
-        _, indices_gat = torch.max(logits, dim=1)
+        acc = evaluate(graph, features, val_labels, val_mask, model_sage)
+        print("SAGE accuracy {:.4f}".format(acc))
+    indices_mode = torch.mode(indices_matrix, 0).values
 
     # Export predictions as csv file
     print("Export predictions as csv file.")
+    test_pred_labels = indices_mode[test_mask]
     with open("output.csv", "w") as f:
         f.write("ID,Predict\n")
-        all_different = 0
-        one_different = 0
-        for idx, pred in enumerate(indices_sage):
-            if pred != indices_gcn[idx] and pred != indices_gat[idx] and indices_gcn[idx] != indices_gat[idx]:
-                all_different = all_different + 1
-                f.write(f"{idx},{1}\n")
-            elif pred != indices_gcn[idx] and pred == indices_gat[idx]:
-                one_different = one_different + 1
-                f.write(f"{idx},{int(pred)}\n")
-            elif pred != indices_gat[idx] and pred == indices_gcn[idx]:
-                one_different = one_different + 1
-                f.write(f"{idx},{int(pred)}\n")
-            elif indices_gcn[idx] != pred and indices_gcn[idx] == indices_gat[idx]:
-                one_different = one_different + 1
-                f.write(f"{idx},{int(indices_gcn[idx])}\n")
-            else:
-                f.write(f"{idx},{int(pred)}\n")
-        print(f"all_different: {all_different}")
-        print(f"one_different: {one_different}")
-    # Please remember to upload your output.csv file to Kaggle for scoring
+        for idx, pred in enumerate(test_pred_labels):
+            f.write(f"{idx},{int(pred)}\n")

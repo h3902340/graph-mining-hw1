@@ -13,9 +13,8 @@ class GAT(nn.Module):
                 in_size,
                 hid_size,
                 heads[0],
-                feat_drop=0.6,
-                attn_drop=0.6,
-                activation=F.elu,
+                feat_drop=0.3,
+                activation=F.relu,
             )
         )
         self.gat_layers.append(
@@ -23,14 +22,12 @@ class GAT(nn.Module):
                 hid_size * heads[0],
                 out_size,
                 heads[1],
-                feat_drop=0.6,
-                attn_drop=0.6,
                 activation=None,
             )
         )
 
-    def forward(self, g, inputs):
-        h = inputs
+    def forward(self, g, features):
+        h = features
         for i, layer in enumerate(self.gat_layers):
             h = layer(g, h)
             if i == len(self.gat_layers) - 1:  # last layer

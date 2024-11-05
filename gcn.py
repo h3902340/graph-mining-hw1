@@ -16,8 +16,8 @@ class GCN(nn.Module):
         # two-layer GCN
         self.layers.append(GraphConv(in_size, hid_size, activation=F.relu))
         self.layers.append(GraphConv(hid_size, out_size))
-        self.input_drop = nn.Dropout(0.25)
-        self.dropout = nn.Dropout(0.75)
+        self.input_drop = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.2)
         self.linears = nn.ModuleList()
         self.linears.append(nn.Linear(in_size, hid_size))
         self.linears.append(nn.Linear(hid_size, out_size))
